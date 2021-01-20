@@ -21,6 +21,7 @@ from data_loader import SalObjDataset
 
 from model import U2NET
 from model import U2NETP
+import os
 
 # ------- 1. define loss function --------
 
@@ -37,7 +38,7 @@ def muti_bce_loss_fusion(d0, d1, d2, d3, d4, d5, d6, labels_v):
 	loss6 = bce_loss(d6,labels_v)
 
 	loss = loss0 + loss1 + loss2 + loss3 + loss4 + loss5 + loss6
-	print("l0: %3f, l1: %3f, l2: %3f, l3: %3f, l4: %3f, l5: %3f, l6: %3f\n"%(loss0.data[0],loss1.data[0],loss2.data[0],loss3.data[0],loss4.data[0],loss5.data[0],loss6.data[0]))
+	print("l0: %3f, l1: %3f, l2: %3f, l3: %3f, l4: %3f, l5: %3f, l6: %3f\n"%(loss0.data,loss1.data,loss2.data,loss3.data,loss4.data,loss5.data,loss6.data))
 
 	return loss0, loss
 
@@ -46,34 +47,36 @@ def muti_bce_loss_fusion(d0, d1, d2, d3, d4, d5, d6, labels_v):
 
 model_name = 'u2net' #'u2netp'
 
-data_dir = os.path.join(os.getcwd(), 'train_data' + os.sep)
-tra_image_dir = os.path.join('DUTS', 'DUTS-TR', 'DUTS-TR', 'im_aug' + os.sep)
-tra_label_dir = os.path.join('DUTS', 'DUTS-TR', 'DUTS-TR', 'gt_aug' + os.sep)
+data_dir = os.path.join(os.getcwd(), 'train_data2' + os.sep)
+tra_image_dir = os.path.join('DUTS', 'DUTS-TR', 'im_aug' + os.sep)
+tra_label_dir = os.path.join('DUTS', 'DUTS-TR',  'gt_aug' + os.sep)
 
-image_ext = '.jpg'
+image_ext = '.png'
 label_ext = '.png'
 
 model_dir = os.path.join(os.getcwd(), 'saved_models', model_name + os.sep)
 
-epoch_num = 100000
+epoch_num = 10000
 batch_size_train = 12
 batch_size_val = 1
 train_num = 0
 val_num = 0
 
-tra_img_name_list = glob.glob(data_dir + tra_image_dir + '*' + image_ext)
+from pathlib import Path
+dataset_path = Path('/dataset')
+tra_lbl_name_list = list(dataset_path.glob('**/annotation/*.png'))
+tra_img_name_list = [str(path).replace('annotation','rgb') for path in tra_lbl_name_list]
+# tra_lbl_name_list = []
+# for img_path in tra_img_name_list:
+# 	img_name = img_path.split(os.sep)[-1]
 
-tra_lbl_name_list = []
-for img_path in tra_img_name_list:
-	img_name = img_path.split(os.sep)[-1]
+# 	aaa = img_name.split(".")
+# 	bbb = aaa[0:-1]
+# 	imidx = bbb[0]
+# 	for i in range(1,len(bbb)):
+# 		imidx = imidx + "." + bbb[i]
 
-	aaa = img_name.split(".")
-	bbb = aaa[0:-1]
-	imidx = bbb[0]
-	for i in range(1,len(bbb)):
-		imidx = imidx + "." + bbb[i]
-
-	tra_lbl_name_list.append(data_dir + tra_label_dir + imidx + label_ext)
+# 	tra_lbl_name_list.append(data_dir + tra_label_dir + imidx + label_ext)
 
 print("---")
 print("train images: ", len(tra_img_name_list))
@@ -101,6 +104,8 @@ elif(model_name=='u2netp'):
 if torch.cuda.is_available():
     net.cuda()
 
+checkpoint = torch.load('saved_models/u2net/u2net.pth')
+net.load_state_dict(checkpoint)
 # ------- 4. define optimizer --------
 print("---define optimizer...")
 optimizer = optim.Adam(net.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
@@ -143,8 +148,8 @@ for epoch in range(0, epoch_num):
         optimizer.step()
 
         # # print statistics
-        running_loss += loss.data[0]
-        running_tar_loss += loss2.data[0]
+        running_loss += loss.data
+        running_tar_loss += loss2.data
 
         # del temporary outputs and loss
         del d0, d1, d2, d3, d4, d5, d6, loss2, loss
