@@ -1,0 +1,2 @@
+docker build -t u2net:latest .
+docker run -it -v /mnt/data/semseg/raw_data:/dataset -v /mnt/data/semseg/pool:/pool --gpus=all -v "$(pwd)"/..:/my_workspace --shm-size=2gb  -u 1000:1000 --name u2net u2net:latest bash

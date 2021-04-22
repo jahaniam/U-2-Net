@@ -13,10 +13,11 @@ import numpy as np
 from PIL import Image
 import glob
 
-from data_loader import RescaleT
-from data_loader import ToTensor
-from data_loader import ToTensorLab
-from data_loader import SalObjDataset
+from rgbd_data_loader import RGBD_RescaleT
+from rgbd_data_loader import RGBD_RandomCrop
+from rgbd_data_loader import RGBD_RandomFlipT
+from rgbd_data_loader import RGBD_ToTensorLab
+from rgbd_data_loader import RGBD_SalObjDataset
 
 from model import U2NET # full size version 173.6 MB
 from model import U2NETP # small version u2net 4.7 MB
@@ -59,41 +60,42 @@ def save_output(image_name,pred,d_dir,i_test):
 
     res = cv2.addWeighted(image, alpha, imo, beta, 0)
 
-    Path(str(image_name).replace('rgb','auto_annotation')).parents[0].mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(image_name).replace('rgb','auto_annotation'),imo)
-    Path(str(image_name).replace('rgb','auto_annotation_overlay')).parents[0].mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(image_name).replace('rgb','auto_annotation_overlay'),res)
+    # Path(str(image_name).replace('rgb','auto_annotation_rgbd')).parents[0].mkdir(parents=True, exist_ok=True)
+    # cv2.imwrite(str(image_name).replace('rgb','auto_annotation_rgbd'),imo)
+    Path(str(image_name).replace('rgb','auto_annotation_rgbd_overlay')).parents[0].mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(image_name).replace('rgb','auto_annotation_rgbd_overlay'),res)
     # image.save()
 
 def main():
 
     # --------- 1. get image path and name ---------
-    model_name='u2net'#u2netp
+    model_name='rgbd_u2net'#u2netp
 
 
 
     image_dir = os.path.join(os.getcwd(), 'test_data', 'test_images')
     prediction_dir = os.path.join(os.getcwd(), 'test_data', model_name + '_results' + os.sep)
     # model_dir = os.path.join(os.getcwd(), 'saved_models', model_name, model_name + '_s6457_2021-02-18_12_36_53u2net_6457_bce_itr_38000_train_0.107382_tar_0.009159.pth')
-    model_dir = 'saved_models/u2net/u2net_s38303_2021-04-13_22_34_54/u2net_38303_bce_itr_60000_train_0.089018_tar_0.008582.pth'
-    path_files = Path('/pool')
+    model_dir = 'saved_models/rgbd_u2net/rgbd_u2net_s30857_2021-04-06_03_52_47/rgbd_u2net_30857_bce_itr_220000_train_0.089360_tar_0.008674.pth'
+    # path_files = Path('/pool/2021-03-31_22-11-41')
+    path_files = Path('/pool/2021-03-31_22-32-41')
     img_name_list1 = sorted([str(x) for x in path_files.rglob('**/rgb/*.png')])
     img_name_list1 = [str(x) for x in img_name_list1 if '2021-03-31' in str(x) or '2021-04-01' in str(x)]
 
-    img_name_list1 = []
-    path_files2 = Path('/dataset/2021-03-31_22-44-07')
-    img_name_list2 = sorted([str(x) for x in path_files2.rglob('**/rgb/*.png') if not Path(str(x).replace('rgb','annotation')).exists()])
+    # path_files2 = Path('/dataset')
+    # img_name_list2 = sorted([str(x) for x in path_files2.rglob('**/rgb/*.png') if not Path(str(x).replace('rgb','annotation')).exists()])
     # img_name_list2 = [str(x) for x in img_name_list2 if '2021-03-10' in str(x)]
     
-    img_name_list = img_name_list1 + img_name_list2
-    print(len(img_name_list))
-
+    img_name_list = img_name_list1 #+ img_name_list2
+    print('img len',len(img_name_list))
+    depth_name_list = [x.replace('rgb','aligned_depth') for x in img_name_list]
     # --------- 2. dataloader ---------
     #1. dataloader
-    test_salobj_dataset = SalObjDataset(img_name_list = img_name_list,
+    test_salobj_dataset = RGBD_SalObjDataset(img_name_list = img_name_list,
+                                        depth_name_list = depth_name_list,
                                         lbl_name_list = [],
-                                        transform=transforms.Compose([RescaleT(320),
-                                                                      ToTensorLab(flag=0)])
+                                        transform=transforms.Compose([RGBD_RescaleT(320),
+                                                                      RGBD_ToTensorLab(flag=0)])
                                         )
     test_salobj_dataloader = DataLoader(test_salobj_dataset,
                                         batch_size=1,
@@ -101,9 +103,9 @@ def main():
                                         num_workers=1)
 
     # --------- 3. model define ---------
-    if(model_name=='u2net'):
+    if(model_name=='rgbd_u2net'):
         print("...load U2NET---173.6 MB")
-        net = U2NET(3,1)
+        net = U2NET(4,1)
     elif(model_name=='u2netp'):
         print("...load U2NEP---4.7 MB")
         net = U2NETP(3,1)
@@ -118,6 +120,9 @@ def main():
         # print("inferencing:",img_name_list[i_test].split(os.sep)[-1])
 
         inputs_test = data_test['image']
+        depth = data_test['depth']
+        inputs_test = torch.cat((inputs_test,torch.unsqueeze(depth,dim=1)),dim=1) # H x W x 4
+
         inputs_test = inputs_test.type(torch.FloatTensor)
 
         if torch.cuda.is_available():

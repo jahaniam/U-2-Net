@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, utils
 from PIL import Image
+import torchvision.transforms.functional as TF
 
 #==========================dataset load==========================
 class RescaleT(object):
@@ -33,45 +34,25 @@ class RescaleT(object):
 
 		new_h, new_w = int(new_h), int(new_w)
 
-		# #resize the image to new_h x new_w and convert image from range [0,255] to [0,1]
-		# img = transform.resize(image,(new_h,new_w),mode='constant')
-		# lbl = transform.resize(label,(new_h,new_w),mode='constant', order=0, preserve_range=True)
-
 		img = transform.resize(image,(self.output_size,self.output_size),mode='constant')
 		lbl = transform.resize(label,(self.output_size,self.output_size),mode='constant', order=0, preserve_range=True)
-
 		return {'imidx':imidx, 'image':img,'label':lbl}
 
-class Rescale(object):
 
-	def __init__(self,output_size):
-		assert isinstance(output_size,(int,tuple))
-		self.output_size = output_size
+class RandomFlipT(object):
 
-	def __call__(self,sample):
-		imidx, image, label = sample['imidx'], sample['image'],sample['label']
+    def __init__(self, probability=0.5):
+        self.probability = probability
 
-		if random.random() >= 0.5:
-			image = image[::-1]
-			label = label[::-1]
+    def __call__(self,sample):
+        imidx, image, label = sample['imidx'], sample['image'],sample['label']	
+        # Random horizontal flipping
+        if random.random() < self.probability:
+            image = np.fliplr(image)
+            label = np.fliplr(label)
 
-		h, w = image.shape[:2]
+        return {'imidx':imidx, 'image':image,'label':label}
 
-		if isinstance(self.output_size,int):
-			if h > w:
-				new_h, new_w = self.output_size*h/w,self.output_size
-			else:
-				new_h, new_w = self.output_size,self.output_size*w/h
-		else:
-			new_h, new_w = self.output_size
-
-		new_h, new_w = int(new_h), int(new_w)
-
-		# #resize the image to new_h x new_w and convert image from range [0,255] to [0,1]
-		img = transform.resize(image,(new_h,new_w),mode='constant')
-		lbl = transform.resize(label,(new_h,new_w),mode='constant', order=0, preserve_range=True)
-
-		return {'imidx':imidx, 'image':img,'label':lbl}
 
 class RandomCrop(object):
 
@@ -134,6 +115,9 @@ class ToTensor(object):
 
 		return {'imidx':torch.from_numpy(imidx), 'image': torch.from_numpy(tmpImg), 'label': torch.from_numpy(tmpLbl)}
 
+
+
+
 class ToTensorLab(object):
 	"""Convert ndarrays in sample to Tensors."""
 	def __init__(self,flag=0):
@@ -141,7 +125,7 @@ class ToTensorLab(object):
 
 	def __call__(self, sample):
 
-		imidx, image, label =sample['imidx'], sample['image'], sample['label']
+		imidx, image, label = sample['imidx'], sample['image'], sample['label']
 
 		tmpLbl = np.zeros(label.shape)
 
@@ -224,9 +208,7 @@ class ToTensorLab(object):
 
 class SalObjDataset(Dataset):
 	def __init__(self,img_name_list,lbl_name_list,transform=None):
-		# self.root_dir = root_dir
-		# self.image_name_list = glob.glob(image_dir+'*.png')
-		# self.label_name_list = glob.glob(label_dir+'*.png')
+ 
 		self.image_name_list = img_name_list
 		self.label_name_list = lbl_name_list
 		self.transform = transform

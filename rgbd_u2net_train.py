@@ -12,11 +12,11 @@ import torchvision.transforms as standard_transforms
 import numpy as np
 import glob
 
-from data_loader import RescaleT
-from data_loader import RandomCrop
-from data_loader import RandomFlipT
-from data_loader import ToTensorLab
-from data_loader import SalObjDataset
+from rgbd_data_loader import RGBD_RescaleT
+from rgbd_data_loader import RGBD_RandomCrop
+from rgbd_data_loader import RGBD_RandomFlipT
+from rgbd_data_loader import RGBD_ToTensorLab
+from rgbd_data_loader import RGBD_SalObjDataset
 
 from model import U2NET
 from model import U2NETP
@@ -44,7 +44,7 @@ def muti_bce_loss_fusion(d0, d1, d2, d3, d4, d5, d6, labels_v):
 
 # ------- 2. set the directory of training dataset --------
 
-model_name = 'u2net' #'u2netp'
+model_name = 'rgbd_u2net' #'u2netp'
 
 data_dir = os.path.join(os.getcwd(), 'train_data2' + os.sep)
 tra_image_dir = os.path.join('DUTS', 'DUTS-TR', 'im_aug' + os.sep)
@@ -65,20 +65,12 @@ from pathlib import Path
 dataset_path = Path('/dataset')
 tra_lbl_name_list = list(dataset_path.glob('**/annotation/*.png'))
 tra_img_name_list = [str(path).replace('annotation','rgb') for path in tra_lbl_name_list]
-# tra_lbl_name_list = []
-# for img_path in tra_img_name_list:
-# 	img_name = img_path.split(os.sep)[-1]
+tra_depth_name_list = [str(path).replace('annotation','aligned_depth') for path in tra_lbl_name_list]
 
-# 	aaa = img_name.split(".")
-# 	bbb = aaa[0:-1]
-# 	imidx = bbb[0]
-# 	for i in range(1,len(bbb)):
-# 		imidx = imidx + "." + bbb[i]
-
-# 	tra_lbl_name_list.append(data_dir + tra_label_dir + imidx + label_ext)
 
 print("---")
 print("train images: ", len(tra_img_name_list))
+print("train depths: ", len(tra_depth_name_list))
 print("train labels: ", len(tra_lbl_name_list))
 
 print("---")
@@ -87,34 +79,36 @@ train_num = len(tra_img_name_list)
 
 from datetime import datetime
 dateTimeObj = datetime.now()
-timestampStr = dateTimeObj.strftime("u2net_s"+str(train_num)+"_%Y-%m-%d_%H_%M_%S")
+timestampStr = dateTimeObj.strftime("rgbd_u2net_s"+str(train_num)+"_%Y-%m-%d_%H_%M_%S")
 model_dir = os.path.join(os.getcwd(), 'saved_models', model_name + os.sep, timestampStr)
-os.mkdir(model_dir)
+Path(model_dir).mkdir(exist_ok=True,parents=True)
 
 np.savetxt(model_dir + '/train_filenames.txt', tra_img_name_list, delimiter="\n", fmt="%s")
 
 
-salobj_dataset = SalObjDataset(
+salobj_dataset = RGBD_SalObjDataset(
     img_name_list=tra_img_name_list,
+    depth_name_list=tra_depth_name_list,
     lbl_name_list=tra_lbl_name_list,
-    transform=transforms.Compose([RandomFlipT(),
-        RescaleT(320),
-        RandomCrop(288),
-        ToTensorLab(flag=0)]))
-salobj_dataloader = DataLoader(salobj_dataset, batch_size=batch_size_train, shuffle=True, num_workers=1)
+    transform=transforms.Compose([RGBD_RandomFlipT(),
+        RGBD_RescaleT(320),
+        RGBD_RandomCrop(288),
+        RGBD_ToTensorLab(flag=0)]))
+salobj_dataloader = DataLoader(salobj_dataset, batch_size=batch_size_train, shuffle=True, num_workers=3)
 
 # ------- 3. define model --------
 # define the net
-if(model_name=='u2net'):
-    net = U2NET(3, 1)
+if(model_name=='rgbd_u2net'):
+    net = U2NET(4, 1)
 elif(model_name=='u2netp'):
     net = U2NETP(3,1)
 
 if torch.cuda.is_available():
     net.cuda()
 
-checkpoint = torch.load('saved_models/u2net/u2net_s18965_2021-03-20_10_39_19/u2net_18965_bce_itr_52000_train_0.089388_tar_0.008373.pth')
-net.load_state_dict(checkpoint)
+# checkpoint = torch.load('saved_models/u2net/u2net_s10500_2021-03-12_06_23_27/u2net_10500_bce_itr_46000_train_0.109683_tar_0.009998.pth')
+# net.load_state_dict(checkpoint)
+
 # ------- 4. define optimizer --------
 print("---define optimizer...")
 optimizer = optim.Adam(net.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
@@ -125,7 +119,7 @@ ite_num = 0
 running_loss = 0.0
 running_tar_loss = 0.0
 ite_num4val = 0
-save_frq = 3000 # save the model every 2000 iterations
+save_frq = 2000 # save the model every 2000 iterations
 
 for epoch in range(0, epoch_num):
     net.train()
@@ -134,7 +128,8 @@ for epoch in range(0, epoch_num):
         ite_num = ite_num + 1
         ite_num4val = ite_num4val + 1
 
-        inputs, labels = data['image'], data['label']
+        inputs, depth, labels = data['image'], data['depth'], data['label']
+        inputs = torch.cat((inputs,torch.unsqueeze(depth,dim=1)),dim=1) # H x W x 4
 
         inputs = inputs.type(torch.FloatTensor)
         labels = labels.type(torch.FloatTensor)
